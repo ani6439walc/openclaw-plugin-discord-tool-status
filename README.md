@@ -1,6 +1,6 @@
 # Discord Tool Status Plugin (Discord 工具狀態外掛程式)
 
-![Discord Tool Status Example](./example.png)
+![Discord Tool Status Example](https://raw.githubusercontent.com/ani6439walc/openclaw-plugin-discord-tool-status/refs/heads/main/example.png)
 
 > 輕輕晃著腦袋，看著那些跳動的狀態訊息感嘆著…… 
 > 
