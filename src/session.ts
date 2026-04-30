@@ -19,7 +19,10 @@ export function isCurrentSession(session: SessionEntry): boolean {
 }
 
 export function hasVisibleStatusState(session: SessionEntry): boolean {
-  return Boolean(session.statusMessageId) || session.toolHistory.length > 0;
+  return (
+    Boolean(session.statusMessageId) ||
+    session.toolHistory.some((t) => t.toolCallId !== "init")
+  );
 }
 
 export async function waitForPendingOp(session: SessionEntry, hookName: string) {

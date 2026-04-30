@@ -1,5 +1,6 @@
 export function getToolIcon(name: string): string {
   const n = name.toLowerCase();
+  if (n.startsWith("📖")) return "";
   if (n.includes("web_search")) return "🔎";
   if (n.includes("web_fetch")) return "🗳️";
   if (n.includes("browser")) return "🌎";
@@ -69,5 +70,6 @@ export function formatParams(params: any): string {
         return `${keyPrefix}${k}: ${val}`;
       }
     })
-    .join("\n");
+    .join("\n")
+    .replaceAll(/`/g, "ˋ");
 }

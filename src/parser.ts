@@ -43,6 +43,10 @@ export function extractIdFromMetadata(
   return match?.[1] || undefined;
 }
 
+export function extractSenderId(metadata: any): string | undefined {
+  return String(metadata?.senderId ?? "").trim() || undefined;
+}
+
 export function parseActiveMemoryToolEntries(event: any): ToolEntry[] {
   const messages = (event?.messages ?? []) as AgentEventMessage[];
   if (!Array.isArray(messages) || messages.length === 0) {

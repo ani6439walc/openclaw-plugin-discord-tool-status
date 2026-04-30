@@ -10,6 +10,7 @@ import {
   isSubagentSessionKey,
   getActiveMemorySourceSessionKey,
   extractIdFromMetadata,
+  extractSenderId,
   parseActiveMemoryToolEntries,
 } from "./src/parser.js";
 import {
@@ -35,28 +36,60 @@ export default definePluginEntry({
     const getToken = (accountId?: string) =>
       resolveDiscordToken(api.config, { accountId }).token;
 
-    api.on("message_received", async (event, ctx) => {
-      if (ctx.channelId !== "discord") return;
+    function logHookEvent(hookName: string, _event: any, ctx: any) {
+      logger.debug(
+        `discord-tool-status: ${hookName} ctx: ${JSON.stringify(ctx)}`,
+        {
+          subsystem: "plugins",
+          sessionKey: ctx.sessionKey,
+        },
+      );
+    }
+
+    function shouldSkipSession(ctx: any, hookName: string): boolean {
       if (
         isActiveMemorySessionKey(ctx.sessionKey) ||
         isSubagentSessionKey(ctx.sessionKey)
       ) {
         logger.trace(
-          "discord-tool-status: message_received: skip (active-memory/subagent) session.",
+          `discord-tool-status: ${hookName}: skip (active-memory/subagent) session.`,
           {
             subsystem: "plugins",
             sessionKey: ctx.sessionKey,
           },
         );
-        return;
+        return true;
       }
-      logger.debug(
-        `discord-tool-status: message_received event: ${JSON.stringify(event)}`,
-        {
-          subsystem: "plugins",
-          ctx,
-        },
+      return false;
+    }
+
+    async function resolveAndFinalize(
+      ctx: any,
+      delayMs: number,
+      hookName: string,
+      requireVisibleState = false,
+    ) {
+      const contextKey = getDiscordContextKey(ctx.sessionKey);
+      if (!contextKey) return;
+      const session = await resolveSession(contextKey, ctx.sessionKey);
+      if (!session) return;
+      if (requireVisibleState && !hasVisibleStatusState(session)) return;
+      await updateStatusMessage(session, getToken, true);
+      scheduleSessionCleanup(
+        contextKey,
+        session,
+        ctx.sessionKey,
+        delayMs,
+        `${hookName}_delayed`,
+        getToken,
       );
+    }
+
+    api.on("message_received", async (event, ctx) => {
+      if (ctx.channelId !== "discord") return;
+      if (shouldSkipSession(ctx, "message_received")) return;
+      logHookEvent("message_received", event, ctx);
+
       const contextKey = getDiscordContextKey(ctx.sessionKey);
       if (!contextKey) return;
 
@@ -68,7 +101,7 @@ export default definePluginEntry({
       sessionContextMap.set(contextKey, {
         actualChannelId,
         userMessageId: event.messageId,
-        senderId: String(event.metadata?.senderId ?? "").trim() || undefined,
+        senderId: extractSenderId(event.metadata),
         accountId: ctx.accountId,
         sourceSessionKey: ctx.sessionKey,
       });
@@ -87,8 +120,7 @@ export default definePluginEntry({
             contextKey,
             channelId: actualChannelId,
             userMessageId: event.messageId,
-            senderId:
-              String(event.metadata?.senderId ?? "").trim() || undefined,
+            senderId: extractSenderId(event.metadata),
             accountId: ctx.accountId,
             ownerSessionKey: ctx.sessionKey,
             generation: activeSession.generation + 1,
@@ -109,38 +141,37 @@ export default definePluginEntry({
               },
             );
           });
+
+          replacement.toolHistory.push({
+            toolCallId: "init",
+            toolName: "📖 努力翻找著腦海裡關於主人的記憶...",
+            params: {},
+            status: "completed",
+          });
           return;
         }
 
         activeSession.channelId = actualChannelId;
         activeSession.userMessageId = event.messageId;
-        activeSession.senderId =
-          String(event.metadata?.senderId ?? "").trim() || undefined;
+        activeSession.senderId = extractSenderId(event.metadata);
         activeSession.accountId = ctx.accountId;
+      }
+
+      const session = getOrCreateSession(contextKey, ctx.sessionKey);
+      if (session && session.toolHistory.length === 0) {
+        session.toolHistory.push({
+          toolCallId: "init",
+          toolName: "📖 努力翻找著腦海裡關於主人的記憶...",
+          params: {},
+          status: "pending",
+        });
       }
     });
 
     api.on("before_tool_call", async (event, ctx) => {
-      if (
-        isActiveMemorySessionKey(ctx.sessionKey) ||
-        isSubagentSessionKey(ctx.sessionKey)
-      ) {
-        logger.trace(
-          "discord-tool-status: before_tool_call: skip (active-memory/subagent) session.",
-          {
-            subsystem: "plugins",
-            sessionKey: ctx.sessionKey,
-          },
-        );
-        return;
-      }
-      logger.debug(
-        `discord-tool-status: before_tool_call event: ${JSON.stringify(event)}`,
-        {
-          subsystem: "plugins",
-          ctx,
-        },
-      );
+      if (shouldSkipSession(ctx, "before_tool_call")) return;
+      logHookEvent("before_tool_call", event, ctx);
+
       const contextKey = getDiscordContextKey(ctx.sessionKey);
       const session = contextKey
         ? await resolveSession(contextKey, ctx.sessionKey)
@@ -169,26 +200,9 @@ export default definePluginEntry({
     });
 
     api.on("after_tool_call", async (event, ctx) => {
-      if (
-        isActiveMemorySessionKey(ctx.sessionKey) ||
-        isSubagentSessionKey(ctx.sessionKey)
-      ) {
-        logger.trace(
-          "discord-tool-status: after_tool_call: skip (active-memory/subagent) session.",
-          {
-            subsystem: "plugins",
-            sessionKey: ctx.sessionKey,
-          },
-        );
-        return;
-      }
-      logger.debug(
-        `discord-tool-status: after_tool_call event: ${JSON.stringify(event)}`,
-        {
-          subsystem: "plugins",
-          ctx,
-        },
-      );
+      if (shouldSkipSession(ctx, "after_tool_call")) return;
+      logHookEvent("after_tool_call", event, ctx);
+
       const contextKey = getDiscordContextKey(ctx.sessionKey);
       const session = contextKey
         ? await resolveSession(contextKey, ctx.sessionKey)
@@ -207,80 +221,19 @@ export default definePluginEntry({
 
     api.on("message_sending", async (event, ctx) => {
       if (ctx.channelId !== "discord") return undefined;
-      if (
-        isActiveMemorySessionKey(ctx.sessionKey) ||
-        isSubagentSessionKey(ctx.sessionKey)
-      ) {
-        logger.trace(
-          "discord-tool-status: message_sending: skip (active-memory/subagent) session.",
-          {
-            subsystem: "plugins",
-            sessionKey: ctx.sessionKey,
-          },
-        );
-        return undefined;
-      }
-      logger.debug(
-        `discord-tool-status: message_sending event: ${JSON.stringify(event)}`,
-        {
-          subsystem: "plugins",
-          ctx,
-        },
-      );
-      const contextKey = getDiscordContextKey(ctx.sessionKey);
-      if (contextKey) {
-        const session = await resolveSession(contextKey, ctx.sessionKey);
-        if (session) {
-          await updateStatusMessage(session, getToken, true);
-          scheduleSessionCleanup(
-            contextKey,
-            session,
-            ctx.sessionKey,
-            1000,
-            "message_sending_delayed",
-            getToken,
-          );
-        }
-      }
+      if (shouldSkipSession(ctx, "message_sending")) return undefined;
+      logHookEvent("message_sending", event, ctx);
+
+      await resolveAndFinalize(ctx, 1000, "message_sending");
       return undefined;
     });
 
     api.on("before_agent_reply", async (event, ctx) => {
-      if (
-        isActiveMemorySessionKey(ctx.sessionKey) ||
-        isSubagentSessionKey(ctx.sessionKey)
-      ) {
-        logger.trace(
-          "discord-tool-status: before_agent_reply: skip (active-memory/subagent) session.",
-          {
-            subsystem: "plugins",
-            sessionKey: ctx.sessionKey,
-          },
-        );
+      if (shouldSkipSession(ctx, "before_agent_reply"))
         return { handled: false };
-      }
-      logger.debug(
-        `discord-tool-status: before_agent_reply event: ${JSON.stringify(event)}`,
-        {
-          subsystem: "plugins",
-          ctx,
-        },
-      );
-      const contextKey = getDiscordContextKey(ctx.sessionKey);
-      if (contextKey) {
-        const session = await resolveSession(contextKey, ctx.sessionKey);
-        if (session && hasVisibleStatusState(session)) {
-          await updateStatusMessage(session, getToken, true);
-          scheduleSessionCleanup(
-            contextKey,
-            session,
-            ctx.sessionKey,
-            1000,
-            "before_agent_reply_delayed",
-            getToken,
-          );
-        }
-      }
+      logHookEvent("before_agent_reply", event, ctx);
+
+      await resolveAndFinalize(ctx, 1000, "before_agent_reply", true);
       return { handled: false };
     });
 
@@ -292,13 +245,7 @@ export default definePluginEntry({
         });
         return;
       }
-      logger.debug(
-        `discord-tool-status: agent_end event: ${JSON.stringify(event)}`,
-        {
-          subsystem: "plugins",
-          ctx,
-        },
-      );
+      logHookEvent("agent_end", event, ctx);
 
       const contextKey = getDiscordContextKey(ctx.sessionKey);
       if (contextKey) {
@@ -331,25 +278,19 @@ export default definePluginEntry({
               while (session.toolHistory.length > 10) {
                 session.toolHistory.shift();
               }
-
-              await updateStatusMessage(session, getToken, true);
             }
+            const initEntry = session.toolHistory.find(
+              (t) => t.toolCallId === "init",
+            );
+            if (initEntry) {
+              initEntry.status = "completed";
+            }
+            await updateStatusMessage(session, getToken, true);
           }
           return;
         }
 
-        const session = await resolveSession(contextKey, ctx.sessionKey);
-        if (session) {
-          await updateStatusMessage(session, getToken, true);
-          scheduleSessionCleanup(
-            contextKey,
-            session,
-            ctx.sessionKey,
-            1500,
-            "agent_end_delayed",
-            getToken,
-          );
-        }
+        await resolveAndFinalize(ctx, 1500, "agent_end");
       }
     });
   },
