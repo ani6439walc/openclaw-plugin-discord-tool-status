@@ -17,7 +17,12 @@ export function normalizeDiscordToken(
   raw: unknown,
   path: string,
 ): string | undefined {
-  const trimmed = normalizeResolvedSecretInputString({ value: raw, path });
+  let trimmed: string | undefined;
+  try {
+    trimmed = normalizeResolvedSecretInputString({ value: raw, path });
+  } catch {
+    return undefined;
+  }
   if (!trimmed) {
     return undefined;
   }

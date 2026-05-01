@@ -2,6 +2,9 @@
   "id": "discord-tool-status",
   "name": "Discord Tool Status",
   "description": "Shows live tool-call status as a Discord message that is updated and deleted when the agent finishes.",
+  "activation": {
+    "onStartup": false
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

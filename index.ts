@@ -144,7 +144,7 @@ export default definePluginEntry({
 
           replacement.toolHistory.push({
             toolCallId: "init",
-            toolName: "📖 努力翻找著腦海裡關於主人的記憶...",
+            toolName: "努力翻找著腦海裡關於主人的記憶",
             params: {},
             status: "completed",
           });
@@ -161,7 +161,7 @@ export default definePluginEntry({
       if (session && session.toolHistory.length === 0) {
         session.toolHistory.push({
           toolCallId: "init",
-          toolName: "📖 努力翻找著腦海裡關於主人的記憶...",
+          toolName: "努力翻找著腦海裡關於主人的記憶",
           params: {},
           status: "pending",
         });

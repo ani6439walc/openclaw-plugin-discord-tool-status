@@ -1,6 +1,6 @@
 export function getToolIcon(name: string): string {
   const n = name.toLowerCase();
-  if (n.startsWith("📖")) return "";
+  if (n.startsWith("努力翻找")) return "🧩";
   if (n.includes("web_search")) return "🔎";
   if (n.includes("web_fetch")) return "🗳️";
   if (n.includes("browser")) return "🌎";
@@ -17,7 +17,7 @@ export function getToolIcon(name: string): string {
     return "📚";
   }
   if (n.includes("context7")) {
-    if (n.includes("resolve")) return "🧩";
+    if (n.includes("resolve")) return "🪧";
     return "🗞️";
   }
   if (n.includes("google-developer")) {
