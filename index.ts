@@ -237,6 +237,7 @@ export default definePluginEntry({
       let toolEntry = session.toolHistory.find(
         (t) => t.toolCallId === event.toolCallId,
       );
+      let isOrphanReconcile = false;
       if (!toolEntry) {
         const orphan = orphanToolCalls.get(event.toolCallId as string);
         if (orphan) {
@@ -247,6 +248,7 @@ export default definePluginEntry({
               params: orphan.params,
               status: "pending",
             };
+            isOrphanReconcile = true;
             session.toolHistory.push(toolEntry);
             if (session.toolHistory.length > 10) session.toolHistory.shift();
             logger.debug(
@@ -258,7 +260,14 @@ export default definePluginEntry({
         }
       }
       if (toolEntry) {
-        toolEntry.status = "completed";
+        if (event.error) {
+          toolEntry.status = "error";
+        } else if (isOrphanReconcile) {
+          toolEntry.status = "orphan-completed";
+        } else {
+          toolEntry.status = "completed";
+        }
+        toolEntry.durationMs = event.durationMs;
         await updateStatusMessage(session, getToken);
       }
     });

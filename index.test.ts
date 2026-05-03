@@ -1224,4 +1224,132 @@ describe("discord-tool-status", () => {
     const allUrls = fetchMock.mock.calls.map((c) => String(c[0]));
     expect(allUrls.some((u) => u.includes("1472937004919423059"))).toBe(false);
   });
+
+  it("shows error icon for failed tool calls and includes duration", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "status-err" }), { status: 200 }),
+      )
+      .mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+    const { emit } = createApiMock();
+
+    const ctx = {
+      channelId: "discord",
+      sessionKey: "agent:main:discord:direct:529296776637972480",
+    };
+
+    await emit(
+      "message_received",
+      {
+        messageId: "u-err",
+        metadata: { to: "channel:1472937004919423059", senderId: "42" },
+      },
+      ctx,
+    );
+
+    await emit(
+      "before_tool_call",
+      { toolCallId: "err-1", toolName: "exec", params: { cmd: "bad" } },
+      ctx,
+    );
+
+    await emit(
+      "after_tool_call",
+      {
+        toolCallId: "err-1",
+        toolName: "exec",
+        params: { cmd: "bad" },
+        error: "Command failed",
+        durationMs: 42,
+      },
+      ctx,
+    );
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).includes("/channels/1472937004919423059/messages") &&
+        (init as RequestInit | undefined)?.method === "PATCH",
+    );
+    expect(patchCall).toBeDefined();
+    const patchBody = JSON.parse(
+      String((patchCall?.[1] as RequestInit | undefined)?.body ?? "{}"),
+    ) as { content?: string };
+    const content = patchBody.content ?? "";
+    expect(content).toContain("✘");
+    expect(content).toContain("(42ms)");
+    expect(content).not.toContain("✔");
+
+    await emit("agent_end", {}, ctx);
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+
+  it("shows orphan-completed icon and duration for reconciled MCP calls", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "status-orphan" }), { status: 200 }),
+      )
+      .mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+    const { emit } = createApiMock();
+
+    const ctx = {
+      channelId: "discord",
+      sessionKey: "agent:main:discord:direct:529296776637972480",
+    };
+
+    await emit(
+      "message_received",
+      {
+        messageId: "u-orphan-icon",
+        metadata: { to: "channel:1472937004919423059", senderId: "42" },
+      },
+      ctx,
+    );
+
+    await emit(
+      "before_tool_call",
+      {
+        toolCallId: "orphan-icon-1",
+        toolName: "sequential-thinking__sequentialthinking",
+        params: { thought: "test" },
+      },
+      {},
+    );
+
+    await emit(
+      "after_tool_call",
+      {
+        toolCallId: "orphan-icon-1",
+        toolName: "sequential-thinking__sequentialthinking",
+        params: { thought: "test" },
+        durationMs: 1500,
+      },
+      ctx,
+    );
+
+    const postCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).includes("/channels/1472937004919423059/messages") &&
+        ((init as RequestInit | undefined)?.method ?? "POST") === "POST",
+    );
+    expect(postCall).toBeDefined();
+    const postBody = JSON.parse(
+      String((postCall?.[1] as RequestInit | undefined)?.body ?? "{}"),
+    ) as { content?: string };
+    const content = postBody.content ?? "";
+    expect(content).toContain("♻︎");
+    expect(content).toContain("(1,500ms)");
+
+    await emit("agent_end", {}, ctx);
+    await vi.advanceTimersByTimeAsync(2000);
+  });
 });

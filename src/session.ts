@@ -293,9 +293,23 @@ export async function updateStatusMessage(
         const icon = getToolIcon(t.toolName);
         const pStr = formatParams(t.params);
         const isLast = index === session.toolHistory.length - 1;
-        const suffix =
-          t.status === "completed" && (!isLast || isFinal) ? "✓" : "←";
-        return `${icon} ${t.toolName}: ${suffix}${pStr ? "\n" + pStr : ""}`;
+        const done =
+          t.status === "completed" ||
+          t.status === "error" ||
+          t.status === "orphan-completed";
+        let suffix: string;
+        if (t.status === "error") {
+          suffix = "✘";
+        } else if (t.status === "orphan-completed") {
+          suffix = "♻︎";
+        } else if (done && (!isLast || isFinal)) {
+          suffix = "✔";
+        } else {
+          suffix = "⬅︎";
+        }
+        const dur =
+          typeof t.durationMs === "number" ? ` (${t.durationMs.toLocaleString()}ms)` : "";
+        return `${icon} ${t.toolName}: ${suffix}${dur}${pStr ? "\n" + pStr : ""}`;
       });
 
       content = "```yaml\n" + contentParts.join("\n\n") + "\n```";
