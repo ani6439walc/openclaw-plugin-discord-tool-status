@@ -25,7 +25,10 @@ export function hasVisibleStatusState(session: SessionEntry): boolean {
   );
 }
 
-export async function waitForPendingOp(session: SessionEntry, hookName: string) {
+export async function waitForPendingOp(
+  session: SessionEntry,
+  hookName: string,
+) {
   if (!session.pendingOp) return;
   logger.debug(`discord-tool-status: [${hookName}] Waiting for pending op...`, {
     subsystem: "plugins",
@@ -305,10 +308,12 @@ export async function updateStatusMessage(
         } else if (done && (!isLast || isFinal)) {
           suffix = "✔";
         } else {
-          suffix = "⬅︎";
+          suffix = "←";
         }
         const dur =
-          typeof t.durationMs === "number" ? ` (${t.durationMs.toLocaleString()}ms)` : "";
+          typeof t.durationMs === "number"
+            ? ` (${t.durationMs.toLocaleString()}ms)`
+            : "";
         return `${icon} ${t.toolName}: ${suffix}${dur}${pStr ? "\n" + pStr : ""}`;
       });
 
