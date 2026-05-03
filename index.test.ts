@@ -172,7 +172,9 @@ describe("discord-tool-status", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ id: "status-format-1" }), { status: 200 }),
+        new Response(JSON.stringify({ id: "status-format-1" }), {
+          status: 200,
+        }),
       )
       .mockResolvedValue(
         new Response(JSON.stringify({ ok: true }), { status: 200 }),
@@ -236,30 +238,35 @@ describe("discord-tool-status", () => {
   it("creates one status message for concurrent tool calls in the same run", async () => {
     const firstPost = deferred<Response>();
     let postCount = 0;
-    const fetchMock = vi.fn().mockImplementation((url: unknown, init?: unknown) => {
-      const requestUrl = String(url);
-      const method = (init as RequestInit | undefined)?.method ?? "GET";
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((url: unknown, init?: unknown) => {
+        const requestUrl = String(url);
+        const method = (init as RequestInit | undefined)?.method ?? "GET";
 
-      if (
-        requestUrl.includes("/channels/1472937004919423059/messages") &&
-        method === "POST"
-      ) {
-        postCount += 1;
-        if (postCount === 1) {
-          return firstPost.promise;
+        if (
+          requestUrl.includes("/channels/1472937004919423059/messages") &&
+          method === "POST"
+        ) {
+          postCount += 1;
+          if (postCount === 1) {
+            return firstPost.promise;
+          }
+
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ id: `status-concurrent-${postCount}` }),
+              {
+                status: 200,
+              },
+            ),
+          );
         }
 
         return Promise.resolve(
-          new Response(JSON.stringify({ id: `status-concurrent-${postCount}` }), {
-            status: 200,
-          }),
+          new Response(JSON.stringify({ ok: true }), { status: 200 }),
         );
-      }
-
-      return Promise.resolve(
-        new Response(JSON.stringify({ ok: true }), { status: 200 }),
-      );
-    });
+      });
 
     vi.stubGlobal("fetch", fetchMock);
     const { emit } = createApiMock();
@@ -306,7 +313,9 @@ describe("discord-tool-status", () => {
     );
 
     firstPost.resolve(
-      new Response(JSON.stringify({ id: "status-concurrent-1" }), { status: 200 }),
+      new Response(JSON.stringify({ id: "status-concurrent-1" }), {
+        status: 200,
+      }),
     );
 
     await vi.advanceTimersByTimeAsync(100);
@@ -555,8 +564,9 @@ describe("discord-tool-status", () => {
 
     const patchCalls = fetchMock.mock.calls.filter(
       ([url, init]) =>
-        String(url).includes("/channels/1472937004919423059/messages/status-am-1") &&
-        (init as RequestInit | undefined)?.method === "PATCH",
+        String(url).includes(
+          "/channels/1472937004919423059/messages/status-am-1",
+        ) && (init as RequestInit | undefined)?.method === "PATCH",
     );
     expect(patchCalls.length).toBeGreaterThanOrEqual(1);
 
@@ -564,8 +574,9 @@ describe("discord-tool-status", () => {
 
     const deleteCalls = fetchMock.mock.calls.filter(
       ([url, init]) =>
-        String(url).includes("/channels/1472937004919423059/messages/status-am-1") &&
-        (init as RequestInit | undefined)?.method === "DELETE",
+        String(url).includes(
+          "/channels/1472937004919423059/messages/status-am-1",
+        ) && (init as RequestInit | undefined)?.method === "DELETE",
     );
     expect(deleteCalls.length).toBe(0);
 
@@ -643,7 +654,11 @@ describe("discord-tool-status", () => {
               },
             ],
           },
-          { role: "toolResult", toolCallId: "stale-1", toolName: "memory_search" },
+          {
+            role: "toolResult",
+            toolCallId: "stale-1",
+            toolName: "memory_search",
+          },
         ],
       },
       auxA,
@@ -667,7 +682,9 @@ describe("discord-tool-status", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ id: "status-am-timer" }), { status: 200 }),
+        new Response(JSON.stringify({ id: "status-am-timer" }), {
+          status: 200,
+        }),
       )
       .mockResolvedValue(
         new Response(JSON.stringify({ ok: true }), { status: 200 }),
@@ -696,7 +713,11 @@ describe("discord-tool-status", () => {
 
     await emit(
       "before_tool_call",
-      { toolCallId: "main-timer-1", toolName: "read", params: { filePath: "x" } },
+      {
+        toolCallId: "main-timer-1",
+        toolName: "read",
+        params: { filePath: "x" },
+      },
       primaryCtx,
     );
 
@@ -717,7 +738,11 @@ describe("discord-tool-status", () => {
               },
             ],
           },
-          { role: "toolResult", toolCallId: "timer-1", toolName: "memory_search" },
+          {
+            role: "toolResult",
+            toolCallId: "timer-1",
+            toolName: "memory_search",
+          },
         ],
       },
       auxCtx,
@@ -727,8 +752,9 @@ describe("discord-tool-status", () => {
 
     const earlyDeletes = fetchMock.mock.calls.filter(
       ([url, init]) =>
-        String(url).includes("/channels/1472937004919423059/messages/status-am-timer") &&
-        (init as RequestInit | undefined)?.method === "DELETE",
+        String(url).includes(
+          "/channels/1472937004919423059/messages/status-am-timer",
+        ) && (init as RequestInit | undefined)?.method === "DELETE",
     );
     expect(earlyDeletes.length).toBe(0);
 
@@ -737,8 +763,9 @@ describe("discord-tool-status", () => {
 
     const finalDeletes = fetchMock.mock.calls.filter(
       ([url, init]) =>
-        String(url).includes("/channels/1472937004919423059/messages/status-am-timer") &&
-        (init as RequestInit | undefined)?.method === "DELETE",
+        String(url).includes(
+          "/channels/1472937004919423059/messages/status-am-timer",
+        ) && (init as RequestInit | undefined)?.method === "DELETE",
     );
     expect(finalDeletes.length).toBe(1);
   });
@@ -833,28 +860,35 @@ describe("discord-tool-status", () => {
 
   it("invalidates old cleanup when ownership switches before next tool", async () => {
     let postCount = 0;
-    const fetchMock = vi.fn().mockImplementation((url: unknown, init?: unknown) => {
-      const requestUrl = String(url);
-      const method = (init as RequestInit | undefined)?.method ?? "GET";
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((url: unknown, init?: unknown) => {
+        const requestUrl = String(url);
+        const method = (init as RequestInit | undefined)?.method ?? "GET";
 
-      if (requestUrl.includes("/channels/666/messages") && method === "POST") {
-        postCount += 1;
-        if (postCount === 1) {
+        if (
+          requestUrl.includes("/channels/666/messages") &&
+          method === "POST"
+        ) {
+          postCount += 1;
+          if (postCount === 1) {
+            return Promise.resolve(
+              new Response(JSON.stringify({ id: "status-switch" }), {
+                status: 200,
+              }),
+            );
+          }
           return Promise.resolve(
-            new Response(JSON.stringify({ id: "status-switch" }), { status: 200 }),
+            new Response(JSON.stringify({ id: "status-switch-new" }), {
+              status: 200,
+            }),
           );
         }
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: "status-switch-new" }), {
-            status: 200,
-          }),
-        );
-      }
 
-      return Promise.resolve(
-        new Response(JSON.stringify({ ok: true }), { status: 200 }),
-      );
-    });
+        return Promise.resolve(
+          new Response(JSON.stringify({ ok: true }), { status: 200 }),
+        );
+      });
 
     vi.stubGlobal("fetch", fetchMock);
     const { emit } = createApiMock();
@@ -933,24 +967,29 @@ describe("discord-tool-status", () => {
   it("isolates new owner when previous owner send is still pending", async () => {
     const firstPost = deferred<Response>();
     let postCount = 0;
-    const fetchMock = vi.fn().mockImplementation((url: unknown, init?: unknown) => {
-      const requestUrl = String(url);
-      const method = (init as RequestInit | undefined)?.method ?? "GET";
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((url: unknown, init?: unknown) => {
+        const requestUrl = String(url);
+        const method = (init as RequestInit | undefined)?.method ?? "GET";
 
-      if (requestUrl.includes("/channels/777/messages") && method === "POST") {
-        postCount += 1;
-        if (postCount === 1) {
-          return firstPost.promise;
+        if (
+          requestUrl.includes("/channels/777/messages") &&
+          method === "POST"
+        ) {
+          postCount += 1;
+          if (postCount === 1) {
+            return firstPost.promise;
+          }
+          return Promise.resolve(
+            new Response(JSON.stringify({ id: "status-new" }), { status: 200 }),
+          );
         }
-        return Promise.resolve(
-          new Response(JSON.stringify({ id: "status-new" }), { status: 200 }),
-        );
-      }
 
-      return Promise.resolve(
-        new Response(JSON.stringify({ ok: true }), { status: 200 }),
-      );
-    });
+        return Promise.resolve(
+          new Response(JSON.stringify({ ok: true }), { status: 200 }),
+        );
+      });
 
     vi.stubGlobal("fetch", fetchMock);
     const { emit } = createApiMock();
@@ -1059,7 +1098,9 @@ describe("discord-tool-status", () => {
     await emit("before_agent_reply", {}, subagentCtx);
     await emit("agent_end", {}, subagentCtx);
 
-    const traceMessages = mockLogger.trace.mock.calls.map(([msg]) => String(msg));
+    const traceMessages = mockLogger.trace.mock.calls.map(([msg]) =>
+      String(msg),
+    );
 
     expect(traceMessages).toContain(
       "discord-tool-status: message_received: skip (active-memory/subagent) session.",
@@ -1079,5 +1120,108 @@ describe("discord-tool-status", () => {
     expect(traceMessages).toContain(
       "discord-tool-status: agent_end: skip subagent session.",
     );
+  });
+
+  it("reconciles MCP-style orphan tool calls in after_tool_call", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "status-mcp" }), { status: 200 }),
+      )
+      .mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+    const { emit } = createApiMock();
+
+    const ctx = {
+      channelId: "discord",
+      sessionKey: "agent:main:discord:direct:529296776637972480",
+    };
+
+    await emit(
+      "message_received",
+      {
+        messageId: "u-mcp",
+        metadata: { to: "channel:1472937004919423059", senderId: "42" },
+      },
+      ctx,
+    );
+
+    await emit(
+      "before_tool_call",
+      {
+        toolCallId: "functions.sequential-thinking__sequentialthinking:47",
+        toolName: "sequential-thinking__sequentialthinking",
+        params: { thought: "analysis" },
+      },
+      {},
+    );
+
+    await emit(
+      "after_tool_call",
+      {
+        toolCallId: "functions.sequential-thinking__sequentialthinking:47",
+        toolName: "sequential-thinking__sequentialthinking",
+        params: { thought: "analysis" },
+      },
+      ctx,
+    );
+
+    const allCalls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(allCalls.some((u) => u.includes("1472937004919423059"))).toBe(true);
+
+    await emit("agent_end", {}, ctx);
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+
+  it("prunes stale orphans older than TTL", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "status-ttl" }), { status: 200 }),
+      )
+      .mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+    const { emit } = createApiMock();
+
+    const ctx = {
+      channelId: "discord",
+      sessionKey: "agent:main:discord:direct:529296776637972480",
+    };
+
+    await emit(
+      "message_received",
+      {
+        messageId: "u-ttl",
+        metadata: { to: "channel:1472937004919423059", senderId: "42" },
+      },
+      ctx,
+    );
+
+    await emit(
+      "before_tool_call",
+      {
+        toolCallId: "stale-orphan-1",
+        toolName: "stale-tool",
+        params: {},
+      },
+      {},
+    );
+
+    await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
+
+    await emit(
+      "after_tool_call",
+      { toolCallId: "stale-orphan-1", toolName: "stale-tool", params: {} },
+      ctx,
+    );
+
+    const allUrls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(allUrls.some((u) => u.includes("1472937004919423059"))).toBe(false);
   });
 });

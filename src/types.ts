@@ -27,6 +27,13 @@ export type AgentEventMessage = {
   toolName?: string;
 };
 
+export type OrphanEntry = {
+  toolCallId: string;
+  toolName: string;
+  params: any;
+  createdAt: number;
+};
+
 export type SessionEntry = {
   contextKey: string;
   channelId: string;

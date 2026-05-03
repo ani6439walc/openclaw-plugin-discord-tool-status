@@ -23,9 +23,21 @@ import {
   scheduleSessionCleanup,
   updateStatusMessage,
 } from "./src/session.js";
-import type { SessionEntry } from "./src/types.js";
+import type { SessionEntry, OrphanEntry } from "./src/types.js";
 
 const logger = createSubsystemLogger("plugins");
+
+const ORPHAN_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const orphanToolCalls = new Map<string, OrphanEntry>();
+
+function pruneStaleOrphans() {
+  const now = Date.now();
+  for (const [id, entry] of orphanToolCalls) {
+    if (now - entry.createdAt > ORPHAN_TTL_MS) {
+      orphanToolCalls.delete(id);
+    }
+  }
+}
 
 export default definePluginEntry({
   id: "discord-tool-status",
@@ -171,6 +183,7 @@ export default definePluginEntry({
     api.on("before_tool_call", async (event, ctx) => {
       if (shouldSkipSession(ctx, "before_tool_call")) return;
       logHookEvent("before_tool_call", event, ctx);
+      pruneStaleOrphans();
 
       const contextKey = getDiscordContextKey(ctx.sessionKey);
       const session = contextKey
@@ -178,13 +191,23 @@ export default definePluginEntry({
         : undefined;
 
       if (!session) {
-        logger.debug(
-          "discord-tool-status: before_tool_call: skip (no session/context).",
-          {
-            subsystem: "plugins",
-            sessionKey: ctx.sessionKey,
-          },
-        );
+        // MCP tools lack sessionKey in before_tool_call; stash as orphan for later reconcile
+        if (event.toolCallId && event.toolName) {
+          orphanToolCalls.set(event.toolCallId as string, {
+            toolCallId: event.toolCallId as string,
+            toolName: event.toolName,
+            params: event.params ?? {},
+            createdAt: Date.now(),
+          });
+          logger.debug(
+            `discord-tool-status: before_tool_call: orphaned tool call (no sessionKey).`,
+            {
+              subsystem: "plugins",
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+            },
+          );
+        }
         return;
       }
 
@@ -202,6 +225,7 @@ export default definePluginEntry({
     api.on("after_tool_call", async (event, ctx) => {
       if (shouldSkipSession(ctx, "after_tool_call")) return;
       logHookEvent("after_tool_call", event, ctx);
+      pruneStaleOrphans();
 
       const contextKey = getDiscordContextKey(ctx.sessionKey);
       const session = contextKey
@@ -210,9 +234,29 @@ export default definePluginEntry({
 
       if (!session) return;
 
-      const toolEntry = session.toolHistory.find(
+      let toolEntry = session.toolHistory.find(
         (t) => t.toolCallId === event.toolCallId,
       );
+      if (!toolEntry) {
+        const orphan = orphanToolCalls.get(event.toolCallId as string);
+        if (orphan) {
+          if (Date.now() - orphan.createdAt <= ORPHAN_TTL_MS) {
+            toolEntry = {
+              toolCallId: orphan.toolCallId,
+              toolName: orphan.toolName,
+              params: orphan.params,
+              status: "pending",
+            };
+            session.toolHistory.push(toolEntry);
+            if (session.toolHistory.length > 10) session.toolHistory.shift();
+            logger.debug(
+              `discord-tool-status: after_tool_call: reconciled orphan tool entry.`,
+              { subsystem: "plugins", toolCallId: event.toolCallId },
+            );
+          }
+          orphanToolCalls.delete(event.toolCallId as string);
+        }
+      }
       if (toolEntry) {
         toolEntry.status = "completed";
         await updateStatusMessage(session, getToken);
